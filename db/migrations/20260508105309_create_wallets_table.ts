@@ -1,4 +1,4 @@
-// db/migrations/20260508105239_create_users_table.ts
+// db/migrations/20260508105309_create_wallets_table.ts
 import type { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
