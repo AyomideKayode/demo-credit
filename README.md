@@ -173,7 +173,7 @@ Enter password:
 
 - In order to avoid relying on `decimal.js` in this MVP and to address the float precision issue, a purposeful trade-off was made to include rounding at the database boundary.
 
-### User Module creation
+### User Module - user creation
 
 - Had to add an `env` flag that bypasses Karma in development due to issues I was having with the Adjutor Test/Live mode toggle. This resulted in my smoke test returning user creation and eligibility issues
 
@@ -217,4 +217,198 @@ Enter password:
     "token": "<REDACTED_JWT>"
   }
 }
+```
+
+### Wallet Module - testing wallet endpoints after creating files
+
+- For the transfers, I made sure wallets are always locked in ascending ID order regardless of who is sender and receiver. This prevents deadlocks when two concurrent transfers involve the same two wallets in opposite directions — both requests acquire locks in the same order, so neither can deadlock waiting on the other.
+
+- After creating the three wallet files and updating the routes index, ran a smoke test on all four wallet endpoints.
+
+```sh
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0 5s
+❯ TOKEN="eyJhbGci...<REDACTED_JWT_FROM_INITIALLY_CREATED_USER>"
+
+# Get wallet
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s http://localhost:3000/api/v1/wallets/me \
+  -H "Authorization: Bearer $TOKEN" | jq
+{
+  "status": "success",
+  "message": "Wallet retrieved successfully",
+  "data": {
+    "id": "3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e",
+    "user_id": "59a5d16c-311e-4497-a180-d0d0995ebb07",
+    "balance": 0,
+    "created_at": "2026-05-09T11:40:18.000Z",
+    "updated_at": "2026-05-09T11:40:18.000Z"
+  }
+}
+
+# Fund
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST http://localhost:3000/api/v1/wallets/fund \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 5000}' | jq
+{
+  "status": "success",
+  "message": "Wallet funded successfully",
+  "data": {
+    "id": "3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e",
+    "user_id": "59a5d16c-311e-4497-a180-d0d0995ebb07",
+    "balance": 5000,
+    "created_at": "2026-05-09T11:40:18.000Z",
+    "updated_at": "2026-05-09T11:40:18.000Z"
+  }
+}
+
+# Withdraw
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST http://localhost:3000/api/v1/wallets/withdraw \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 1000}' | jq
+{
+  "status": "success",
+  "message": "Withdrawal successful",
+  "data": {
+    "id": "3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e",
+    "user_id": "59a5d16c-311e-4497-a180-d0d0995ebb07",
+    "balance": 4000,
+    "created_at": "2026-05-09T11:40:18.000Z",
+    "updated_at": "2026-05-09T18:02:21.000Z"
+  }
+}
+
+```
+
+- To test the transfer endpoint, I created another user and then use their `id` as the `receiver_id`.
+
+```sh
+# Create new user
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST http://localhost:3000/api/v1/users   -H "Content-Type: application/json"   -d '{
+    "first_name": "Eseose",
+    "last_name": "Lendsqr",
+    "email": "eseose.smoketest.02@gmail.com",
+    "phone_number": "09012345678"
+  }' | jq
+{
+  "status": "success",
+  "message": "Account created successfully",
+  "data": {
+    "user": {
+      "id": "b64e3d89-383a-43eb-a402-c089e1cb5568",
+      "first_name": "Eseose",
+      "last_name": "Lendsqr",
+      "email": "eseose.smoketest.02@gmail.com",
+      "phone_number": "09012345678",
+      "created_at": "2026-05-09T18:18:32.753Z",
+      "updated_at": "2026-05-09T18:18:32.753Z"
+    },
+    "token": "eyJhbGci...<REDACTED_JWT>"
+  }
+}
+
+# Transfer funds from Ayomide to Eseose
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST http://localhost:3000/api/v1/wallets/transfer \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "receiver_id": "b64e3d89-383a-43eb-a402-c089e1cb5568",
+    "amount": 1500
+  }' | jq
+{
+  "status": "success",
+  "message": "Transfer successful",
+  "data": {
+    "id": "3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e",
+    "user_id": "59a5d16c-311e-4497-a180-d0d0995ebb07",
+    "balance": 2500,
+    "created_at": "2026-05-09T11:40:18.000Z",
+    "updated_at": "2026-05-09T18:02:46.000Z"
+  }
+}
+
+```
+
+- Verify funds was received by Eseose
+
+```sh
+# Change Token
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ TOKEN="eyJhbGci...<REDACTED_JWT_FOR_SECOND_USER>"
+
+# Get Wallet
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s http://localhost:3000/api/v1/wallets/me   -H "Authorization: Bearer $TOKEN" | jq
+{
+  "status": "success",
+  "message": "Wallet retrieved successfully",
+  "data": {
+    "id": "da3ee036-32b7-417f-a4b1-1df0b32cb628",
+    "user_id": "b64e3d89-383a-43eb-a402-c089e1cb5568",
+    "balance": 1500,
+    "created_at": "2026-05-09T18:18:33.000Z",
+    "updated_at": "2026-05-09T18:46:01.000Z"
+  }
+}
+
+# Fund Wallet
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST http://localhost:3000/api/v1/wallets/fund \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 1000}' | jq
+{
+  "status": "success",
+  "message": "Wallet funded successfully",
+  "data": {
+    "id": "da3ee036-32b7-417f-a4b1-1df0b32cb628",
+    "user_id": "b64e3d89-383a-43eb-a402-c089e1cb5568",
+    "balance": 2500,
+    "created_at": "2026-05-09T18:18:33.000Z",
+    "updated_at": "2026-05-09T18:46:01.000Z"
+  }
+}
+
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯
+```
+
+- Verifying transaction table directly from MySQL
+
+```sh
+~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ mysql -u root -p demo_credit
+Enter password:
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 28
+Server version: 8.0.45-0ubuntu0.24.04.1 (Ubuntu)
+
+Copyright (c) 2000, 2026, Oracle and/or its affiliates.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> SELECT id, reference, type, amount, sender_wallet_id, receiver_wallet_id, status, created_at FROM transactions ORDER BY created_at DESC;
++--------------------------------------+--------------------+------------+---------+--------------------------------------+--------------------------------------+---------+---------------------+
+| id                                   | reference          | type       | amount  | sender_wallet_id                     | receiver_wallet_id                   | status  | created_at          |
++--------------------------------------+--------------------+------------+---------+--------------------------------------+--------------------------------------+---------+---------------------+
+| 69a67685-567c-4ee7-a563-66bd5a245387 | DC-MOYPM84G-77R2II | FUND       | 1000.00 | NULL                                 | da3ee036-32b7-417f-a4b1-1df0b32cb628 | SUCCESS | 2026-05-09 20:01:04 |
+| 0ca4210b-1946-44e7-9b2a-f359d02d1fc5 | DC-MOYP2VL5-O0VGYG | TRANSFER   | 1500.00 | 3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e | da3ee036-32b7-417f-a4b1-1df0b32cb628 | SUCCESS | 2026-05-09 19:46:01 |
+| 262a1565-e0ca-4d06-87f1-1bda3e343576 | DC-MOYNJ9KI-SZPWBX | WITHDRAWAL | 1000.00 | 3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e | NULL                                 | SUCCESS | 2026-05-09 19:02:46 |
+| aafc6e73-ae66-4dfb-96de-68e441d8496f | DC-MOYNIQ3A-R40SAB | FUND       | 5000.00 | NULL                                 | 3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e | SUCCESS | 2026-05-09 19:02:21 |
++--------------------------------------+--------------------+------------+---------+--------------------------------------+--------------------------------------+---------+---------------------+
+4 rows in set (0.01 sec)
+
+mysql>
 ```
