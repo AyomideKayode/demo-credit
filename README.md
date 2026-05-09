@@ -162,3 +162,13 @@ Enter password:
 ~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0 7s
 ❯
 ```
+
+### Repository
+
+- Used `findByIdForUpdate` inside the [Wallet Repository](/src/repositories/wallet.repository.ts) file as it only makes sense inside a Knex transaction — calling it outside one won't acquire a lock because there's no transaction context to hold it. The service layer will always call it with a `trx` argument. That's enforced by the method signature.
+
+- `create` on `WalletRepository` takes a mandatory `trx` argument because wallet creation always happens inside the same transaction as user creation — we never create a user without immediately creating their wallet atomically. There's no valid use case for creating a wallet outside a transaction.
+
+- `createTransaction` lives in `WalletRepository`, not a separate repository, because transactions are always created as part of a wallet operation. They're never created standalone.
+
+- In order to avoid relying on `decimal.js` in this MVP and to address the float precision issue, a purposeful trade-off was made to include rounding at the database boundary.
