@@ -2,7 +2,7 @@
 import express from 'express';
 import { env } from './config/env';
 import db from './config/database';
-import { connected } from 'process';
+import router from './routes';
 
 const app = express();
 
@@ -16,6 +16,8 @@ app.get('/health', async (_req, res) => {
     res.status(503).json({ status: 'error', database: 'unreachable' });
   }
 });
+
+app.use('/api/v1', router);
 
 app.listen(env.PORT, () => {
   console.log(`Server running on port ${env.PORT}`);
