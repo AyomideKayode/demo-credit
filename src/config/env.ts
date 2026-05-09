@@ -20,4 +20,5 @@ export const env = {
   },
   JWT_SECRET: required('JWT_SECRET'),
   ADJUTOR_API_KEY: required('ADJUTOR_API_KEY'),
+  SKIP_KARMA_CHECK: process.env.SKIP_KARMA_CHECK === 'true',
 };
