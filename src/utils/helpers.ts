@@ -1,4 +1,4 @@
-// src/utils/helper.ts
+// src/utils/helpers.ts
 
 import { v4 as uuidv4 } from 'uuid';
 import { ApiResponse } from '../types';

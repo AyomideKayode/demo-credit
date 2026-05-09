@@ -60,3 +60,10 @@ export interface ApiResponse<T = null> {
   message: string;
   data?: T;
 }
+
+export class AppError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = 'AppError';
+  }
+}

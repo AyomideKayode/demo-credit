@@ -172,3 +172,49 @@ Enter password:
 - `createTransaction` lives in `WalletRepository`, not a separate repository, because transactions are always created as part of a wallet operation. They're never created standalone.
 
 - In order to avoid relying on `decimal.js` in this MVP and to address the float precision issue, a purposeful trade-off was made to include rounding at the database boundary.
+
+### User Module creation
+
+- Had to add an `env` flag that bypasses Karma in development due to issues I was having with the Adjutor Test/Live mode toggle. This resulted in my smoke test returning user creation and eligibility issues
+
+```sh
+~/sandbox/demo-credit on  feat/user-module !+?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST http://localhost:3000/api/v1/users   -H "Content-Type: application/json"   -d '{
+    "first_name": "Ayomide",
+    "last_name": "Kayode",
+    "email": "ayomide.smoketest.01@gmail.com",
+    "phone_number": "08012345678"
+  }' | jq
+{
+  "status": "error",
+  "message": "User is not eligible for onboarding"
+}
+```
+
+- This lets me complete and smoke test the rest of the implementation without being blocked. In production (`NODE_ENV=production`), the bypass is never active. The real Karma check runs. I'm using this not necessarily as a hack, just normal development pattern.
+
+```sh
+~/sandbox/demo-credit on  feat/user-module !+?  via  v20.20.0 is 󰏗 v1.0.0 3s
+❯ curl -s -X POST http://localhost:3000/api/v1/users   -H "Content-Type: application/json"   -d '{
+    "first_name": "Ayomide",
+    "last_name": "Kayode",
+    "email": "ayomide.smoketest.01@gmail.com",
+    "phone_number": "08012345678"
+  }' | jq
+{
+  "status": "success",
+  "message": "Account created successfully",
+  "data": {
+    "user": {
+      "id": "59a5d16c-311e-4497-a180-d0d0995ebb07",
+      "first_name": "Ayomide",
+      "last_name": "Kayode",
+      "email": "ayomide.smoketest.01@gmail.com",
+      "phone_number": "08012345678",
+      "created_at": "2026-05-09T11:40:17.938Z",
+      "updated_at": "2026-05-09T11:40:17.938Z"
+    },
+    "token": "<REDACTED_JWT>"
+  }
+}
+```
