@@ -1,5 +1,6 @@
 // src/repositories/user.repository.ts
 
+import { Knex } from 'knex';
 import db from '../config/database';
 import { User } from '../types';
 
@@ -12,7 +13,7 @@ export class UserRepository {
     return db<User>('users').where({ email }).first();
   }
 
-  async create(user: User): Promise<void> {
-    await db<User>('users').insert(user);
+  async create(user: User, trx: Knex.Transaction): Promise<void> {
+    await trx<User>('users').insert(user);
   }
 }

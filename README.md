@@ -170,3 +170,5 @@ Enter password:
 - `create` on `WalletRepository` takes a mandatory `trx` argument because wallet creation always happens inside the same transaction as user creation — we never create a user without immediately creating their wallet atomically. There's no valid use case for creating a wallet outside a transaction.
 
 - `createTransaction` lives in `WalletRepository`, not a separate repository, because transactions are always created as part of a wallet operation. They're never created standalone.
+
+- In order to avoid relying on `decimal.js` in this MVP and to address the float precision issue, a purposeful trade-off was made to include rounding at the database boundary.

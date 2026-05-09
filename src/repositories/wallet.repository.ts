@@ -10,7 +10,9 @@ export class WalletRepository {
   private normalize(wallet: Wallet): Wallet {
     return {
       ...wallet,
-      balance: parseFloat(wallet.balance as unknown as string),
+      balance: Number(
+        parseFloat(wallet.balance as unknown as string).toFixed(2),
+      ),
     };
   }
 
@@ -30,7 +32,7 @@ export class WalletRepository {
   // before any balance mutation. Prevents concurrent double-spends.
   async findByIdForUpdate(
     id: string,
-    trx: Knex.Transaction
+    trx: Knex.Transaction,
   ): Promise<Wallet | undefined> {
     const wallet = await trx<Wallet>('wallets')
       .where({ id })
@@ -46,16 +48,16 @@ export class WalletRepository {
   async updateBalance(
     walletId: string,
     balance: number,
-    trx: Knex.Transaction
+    trx: Knex.Transaction,
   ): Promise<void> {
     await trx<Wallet>('wallets')
       .where({ id: walletId })
-      .update({ balance, updated_at: new Date() });
+      .update({ balance: Number(balance.toFixed(2)), updated_at: new Date() });
   }
 
   async createTransaction(
     transaction: Transaction,
-    trx: Knex.Transaction
+    trx: Knex.Transaction,
   ): Promise<void> {
     await trx<Transaction>('transactions').insert(transaction);
   }
