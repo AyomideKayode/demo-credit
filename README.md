@@ -214,7 +214,7 @@ Enter password:
       "created_at": "2026-05-09T11:40:17.938Z",
       "updated_at": "2026-05-09T11:40:17.938Z"
     },
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU5YTVkMTZjLTMxMWUtNDQ5Ny1hMTgwLWQwZDA5OTVlYmIwNyIsImlhdCI6MTc3ODMyNjgxOCwiZXhwIjoxNzc4NDEzMjE4fQ.3xsLfrkwksNfMF9OrZIR-W4d4e33eM67qPt1_tU1LDs"
+    "token": "<REDACTED_JWT>"
   }
 }
 ```

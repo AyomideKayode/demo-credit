@@ -19,9 +19,7 @@ export class UserController {
   register = async (req: Request, res: Response): Promise<void> => {
     const result = createUserSchema.safeParse(req.body);
     if (!result.success) {
-      res
-        .status(400)
-        .json(errorResponse(result.error.issues[0].message));
+      res.status(400).json(errorResponse(result.error.issues[0].message));
       return;
     }
 
@@ -42,6 +40,12 @@ export class UserController {
   getById = async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = String(req.params.id);
+
+      if (req.user?.id !== userId) {
+        res.status(403).json(errorResponse('Access denied'));
+        return;
+      }
+
       const user = await this.userService.findById(userId);
       res.json(successResponse('User retrieved successfully', user));
     } catch (err: unknown) {

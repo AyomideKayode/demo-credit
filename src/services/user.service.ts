@@ -46,10 +46,22 @@ export class UserService {
       updated_at: new Date(),
     };
 
-    await db.transaction(async (trx) => {
-      await this.userRepo.create(user, trx);
-      await this.walletRepo.create(wallet, trx);
-    });
+    try {
+      await db.transaction(async (trx) => {
+        await this.userRepo.create(user, trx);
+        await this.walletRepo.create(wallet, trx);
+      });
+    } catch (err: unknown) {
+      // MySQL error 1062 = ER_DUP_ENTRY (unique constraint violation)
+      const mysqlError = err as { code?: string };
+      if (mysqlError.code === 'ER_DUP_ENTRY') {
+        throw new AppError(
+          409,
+          'A user with this email or phone number already exists',
+        );
+      }
+      throw err;
+    }
 
     const token = jwt.sign({ id: userId }, env.JWT_SECRET, {
       expiresIn: '24h',

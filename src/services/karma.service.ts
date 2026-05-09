@@ -7,6 +7,7 @@ import { AppError } from '../types';
 export class KarmaService {
   private readonly baseUrl =
     'https://adjutor.lendsqr.com/v2/verification/karma';
+  private readonly requestTimeoutMs = 5000;
 
   async isBlacklisted(identity: string): Promise<boolean> {
     if (env.NODE_ENV === 'development' && env.SKIP_KARMA_CHECK) {
@@ -18,6 +19,7 @@ export class KarmaService {
         `${this.baseUrl}/${encodeURIComponent(identity)}`,
         {
           headers: { Authorization: `Bearer ${env.ADJUTOR_API_KEY}` },
+          timeout: this.requestTimeoutMs,
         },
       );
       // console.log('[Karma] status:', response.status);
