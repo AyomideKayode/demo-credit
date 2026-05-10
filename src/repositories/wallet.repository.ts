@@ -2,7 +2,7 @@
 
 import { Knex } from 'knex';
 import db from '../config/database';
-import { Transaction, Wallet } from '../types';
+import { Transaction, TransactionStatus, Wallet } from '../types';
 
 export class WalletRepository {
   // mysql2 returns DECIMAL columns as strings over the wire.
@@ -60,5 +60,16 @@ export class WalletRepository {
     trx: Knex.Transaction,
   ): Promise<void> {
     await trx<Transaction>('transactions').insert(transaction);
+  }
+
+  // add a method to update transaction status (for pending transactions)
+  async updateTransactionStatus(
+    transactionId: string,
+    status: TransactionStatus,
+    trx: Knex.Transaction,
+  ): Promise<void> {
+    await trx<Transaction>('transactions')
+      .where({ id: transactionId })
+      .update({ status, updated_at: new Date() });
   }
 }
