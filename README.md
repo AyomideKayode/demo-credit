@@ -412,3 +412,224 @@ mysql> SELECT id, reference, type, amount, sender_wallet_id, receiver_wallet_id,
 
 mysql>
 ```
+
+### Tests
+
+Created tests to cover the following test suites:
+
+- **User tests** (positive + negative):
+  - Register a clean user → `201` with user and token
+  - Register with blacklisted email → `403`
+  - Register with duplicate email → `409`
+  - Register with invalid body (missing field, bad email) → `400`
+  - Get own profile with valid token → `200`
+  - Get another user's profile → `403`
+  - Get profile with no token → `401`
+- **Wallet tests** (positive + negative):
+  - Fund wallet → balance increases
+  - Fund with amount ≤ 0 → `400`
+  - Withdraw within balance → balance decreases
+  - Withdraw more than balance → `400`
+  - Transfer to another user → both balances correct
+  - Transfer to self → `400`
+  - Transfer with insufficient balance → `400`
+  - Transfer with invalid receiver ID → `404`
+  - All wallet endpoints without token → `401`
+
+First set of test failed because my mock implementation was returning `() => mockUserRepo` which was just a plain arrow function.So when TypeScript/Vitest tried to run it against the actual code `new UserRepository()`, JavaScript throws the error.
+
+```sh
+~/sandbox/demo-credit on  feat/tests ?  via  v20.20.0 is 󰏗 v1.0.0
+❯ npm test
+
+> demo-credit@1.0.0 test
+> vitest run
+
+
+ RUN  v4.1.5 /home/ayomide/sandbox/demo-credit
+
+stderr | tests/wallet.test.ts > WalletService > getWallet > returns the wallet for a valid user
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > getWallet > throws 404 when wallet does not exist
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > fund > increases wallet balance by the funded amount
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > fund > creates a FUND transaction with PENDING then SUCCESS status
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > fund > throws 400 when amount is zero
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > fund > throws 400 when amount is negative
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > fund > throws 400 when amount exceeds 2 decimal places
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > fund > throws 404 when wallet does not exist
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > withdraw > decreases wallet balance by the withdrawn amount
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > withdraw > creates a WITHDRAWAL transaction record
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > withdraw > throws 400 when withdrawing more than available balance
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > withdraw > throws 400 when amount is zero or negative
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > withdraw > throws 400 when amount exceeds 2 decimal places
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > transfer > returns updated sender wallet after transfer
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > transfer > debits sender and credits receiver with correct amounts
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > transfer > creates a TRANSFER transaction record
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > transfer > throws 400 when sender and receiver are the same user
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > transfer > throws 400 when sender has insufficient balance
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > transfer > throws 404 when receiver user does not exist
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/wallet.test.ts > WalletService > transfer > throws 400 when amount exceeds 2 decimal places
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+ ❯ tests/wallet.test.ts (20 tests | 20 failed) 119ms
+       × returns the wallet for a valid user 24ms
+       × throws 404 when wallet does not exist 4ms
+       × increases wallet balance by the funded amount 5ms
+       × creates a FUND transaction with PENDING then SUCCESS status 3ms
+       × throws 400 when amount is zero 2ms
+       × throws 400 when amount is negative 8ms
+       × throws 400 when amount exceeds 2 decimal places 11ms
+       × throws 404 when wallet does not exist 10ms
+       × decreases wallet balance by the withdrawn amount 5ms
+       × creates a WITHDRAWAL transaction record 2ms
+       × throws 400 when withdrawing more than available balance 2ms
+       × throws 400 when amount is zero or negative 5ms
+       × throws 400 when amount exceeds 2 decimal places 2ms
+       × returns updated sender wallet after transfer 3ms
+       × debits sender and credits receiver with correct amounts 2ms
+       × creates a TRANSFER transaction record 2ms
+       × throws 400 when sender and receiver are the same user 2ms
+       × throws 400 when sender has insufficient balance 3ms
+       × throws 404 when receiver user does not exist 3ms
+       × throws 400 when amount exceeds 2 decimal places 4ms
+stderr | tests/user.test.ts > UserService > register > registers a clean user and returns user object with JWT
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/user.test.ts > UserService > register > calls Karma with the registering email
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/user.test.ts > UserService > register > throws 403 when email is on the Karma blacklist
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/user.test.ts > UserService > register > throws 409 on duplicate email (fast path pre-check)
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/user.test.ts > UserService > register > throws 409 on DB duplicate key constraint (race / duplicate phone)
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/user.test.ts > UserService > register > propagates 503 when Karma service is unreachable
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/user.test.ts > UserService > findById > returns the user when found
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+stderr | tests/user.test.ts > UserService > findById > throws 404 when user does not exist
+[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+
+ ❯ tests/user.test.ts (8 tests | 8 failed) 26ms
+       × registers a clean user and returns user object with JWT 10ms
+       × calls Karma with the registering email 3ms
+       × throws 403 when email is on the Karma blacklist 5ms
+       × throws 409 on duplicate email (fast path pre-check) 1ms
+       × throws 409 on DB duplicate key constraint (race / duplicate phone) 1ms
+       × propagates 503 when Karma service is unreachable 1ms
+       × returns the user when found 1ms
+       × throws 404 when user does not exist 1ms
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Failed Tests 28 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/user.test.ts > UserService > register > registers a clean user and returns user object with JWT
+ FAIL  tests/user.test.ts > UserService > register > calls Karma with the registering email
+ FAIL  tests/user.test.ts > UserService > register > throws 403 when email is on the Karma blacklist
+ FAIL  tests/user.test.ts > UserService > register > throws 409 on duplicate email (fast path pre-check)
+ FAIL  tests/user.test.ts > UserService > register > throws 409 on DB duplicate key constraint (race / duplicate phone)
+ FAIL  tests/user.test.ts > UserService > register > propagates 503 when Karma service is unreachable
+ FAIL  tests/user.test.ts > UserService > findById > returns the user when found
+ FAIL  tests/user.test.ts > UserService > findById > throws 404 when user does not exist
+TypeError: () => mockUserRepo is not a constructor
+ ❯ new UserService src/services/user.service.ts:13:22
+     11|
+     12| export class UserService {
+     13|   private userRepo = new UserRepository();
+       |                      ^
+     14|   private walletRepo = new WalletRepository();
+     15|   private karmaService = new KarmaService();
+ ❯ tests/user.test.ts:74:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/28]⎯
+
+ FAIL  tests/wallet.test.ts > WalletService > getWallet > returns the wallet for a valid user
+ FAIL  tests/wallet.test.ts > WalletService > getWallet > throws 404 when wallet does not exist
+ FAIL  tests/wallet.test.ts > WalletService > fund > increases wallet balance by the funded amount
+ FAIL  tests/wallet.test.ts > WalletService > fund > creates a FUND transaction with PENDING then SUCCESS status
+ FAIL  tests/wallet.test.ts > WalletService > fund > throws 400 when amount is zero
+ FAIL  tests/wallet.test.ts > WalletService > fund > throws 400 when amount is negative
+ FAIL  tests/wallet.test.ts > WalletService > fund > throws 400 when amount exceeds 2 decimal places
+ FAIL  tests/wallet.test.ts > WalletService > fund > throws 404 when wallet does not exist
+ FAIL  tests/wallet.test.ts > WalletService > withdraw > decreases wallet balance by the withdrawn amount
+ FAIL  tests/wallet.test.ts > WalletService > withdraw > creates a WITHDRAWAL transaction record
+ FAIL  tests/wallet.test.ts > WalletService > withdraw > throws 400 when withdrawing more than available balance
+ FAIL  tests/wallet.test.ts > WalletService > withdraw > throws 400 when amount is zero or negative
+ FAIL  tests/wallet.test.ts > WalletService > withdraw > throws 400 when amount exceeds 2 decimal places
+ FAIL  tests/wallet.test.ts > WalletService > transfer > returns updated sender wallet after transfer
+ FAIL  tests/wallet.test.ts > WalletService > transfer > debits sender and credits receiver with correct amounts
+ FAIL  tests/wallet.test.ts > WalletService > transfer > creates a TRANSFER transaction record
+ FAIL  tests/wallet.test.ts > WalletService > transfer > throws 400 when sender and receiver are the same user
+ FAIL  tests/wallet.test.ts > WalletService > transfer > throws 400 when sender has insufficient balance
+ FAIL  tests/wallet.test.ts > WalletService > transfer > throws 404 when receiver user does not exist
+ FAIL  tests/wallet.test.ts > WalletService > transfer > throws 400 when amount exceeds 2 decimal places
+TypeError: () => mockWalletRepo is not a constructor
+ ❯ new WalletService src/services/wallet.service.ts:16:24
+     14|
+     15| export class WalletService {
+     16|   private walletRepo = new WalletRepository();
+       |                        ^
+     17|   private userRepo = new UserRepository();
+     18|
+ ❯ tests/wallet.test.ts:93:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/28]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  28 failed (28)
+   Start at  01:52:52
+   Duration  2.53s (transform 1.03s, setup 0ms, import 2.11s, tests 144ms, environment 1ms)
+```
+
+Fix: I replaced `vi.mocked(UserRepository).mockImplementation(() => mockUserRepo as any);` or its instances in both test files with
+
+```typescript
+vi.mocked(UserRepository).mockImplementation(
+  function () {
+    return mockUserRepo as any;
+  } as any
+);
+```
