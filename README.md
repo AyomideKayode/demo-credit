@@ -1,13 +1,66 @@
-# demo-credit
+# Demo Credit — Wallet Service
 
-## Planned Repo Structure
+A transactional wallet service API built as a backend engineering assessment for Lendsqr. Demo Credit provides the wallet infrastructure required by a mobile lending app — borrowers need wallets to receive disbursed loans and send repayments.
+
+## Table of Contents
+
+- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
+- [E-R Diagram](#e-r-diagram)
+- [Database Design](#database-design)
+- [API Reference](#api-reference)
+- [Quick Start](#quick-start)
+- [Running Migrations](#running-migrations)
+- [Running Tests](#running-tests)
+- [Design Decisions and Trade-offs](#design-decisions-and-trade-offs)
+- [Known Limitations and Production Extensions](#known-limitations-and-production-extensions)
+
+---
+
+## Tech Stack
+
+| Concern      | Technology                        |
+| ------------ | --------------------------------- |
+| Runtime      | Node.js v20 (LTS)                 |
+| Language     | TypeScript (strict mode)          |
+| Framework    | Express.js v5                     |
+| ORM          | KnexJS v3                         |
+| Database     | MySQL 8.0                         |
+| Auth         | JWT (jsonwebtoken, HS256)         |
+| Validation   | Zod                               |
+| External API | Lendsqr Adjutor (Karma blacklist) |
+| HTTP Client  | Axios                             |
+| Testing      | Vitest + @vitest/coverage-v8      |
+
+---
+
+## Architecture
+
+The application follows a strict three-layer architecture, implemented with class-based OOP throughout:
 
 ```sh
+HTTP Request
+    ↓
+Controllers        — HTTP in/out only. Validates request shape via Zod.
+                     Maps AppError instances to status codes. No business logic.
+    ↓
+Services           — Business logic. Owns all Knex transaction scoping.
+                     Enforces financial invariants (balance checks, blacklist check,
+                     self-transfer guard, amount precision).
+    ↓
+Repositories       — Knex queries only. No logic. All mutation methods
+                     accept a Knex.Transaction argument — no balance
+                     updates happen outside a transaction.
+```
+
+### Project Structure
+
+```bash
 demo-credit/
 ├── src/
 │   ├── config/
-│   │   ├── database.ts       # Knex singleton
-│   │   └── env.ts            # env validation + export
+│   │   ├── database.ts        # Knex singleton
+│   │   └── env.ts             # Typed env with fail-fast validation
 │   ├── controllers/
 │   │   ├── user.controller.ts
 │   │   └── wallet.controller.ts
@@ -25,9 +78,10 @@ demo-credit/
 │   │   ├── user.routes.ts
 │   │   └── wallet.routes.ts
 │   ├── types/
-│   │   └── index.ts
+│   │   ├── index.ts           # Domain interfaces + DTOs + AppError class
+│   │   └── express.d.ts       # Express Request augmentation (req.user)
 │   ├── utils/
-│   │   └── helpers.ts
+│   │   └── helpers.ts         # ID generation, reference generation, response helpers
 │   └── app.ts
 ├── db/
 │   └── migrations/
@@ -35,163 +89,121 @@ demo-credit/
 │   ├── user.test.ts
 │   └── wallet.test.ts
 ├── .env.example
-├── .gitignore
 ├── knexfile.ts
 ├── tsconfig.json
+├── vitest.config.ts
 └── package.json
 ```
 
-### Notes
+---
 
-- Transactions retain `updated_at` because status transitions from `PENDING` to `SUCCESS` or `FAILED` require mutation, while preserving immutable financial history through separate transaction records.
-- **Financial Integrity**: By setting `ON DELETE RESTRICT`, we are ensuring that a user or wallet cannot be removed if there is a paper trail of transactions associated with them. This is a non-negotiable requirement in fintech systems.
-- **Performance**: The `BTREE` indexes on the `sender` and `receiver` IDs ensure that as our `transactions` table grows into the millions, the "Transaction History" query for an individual user remains $O(\log n)$ rather than $O(n)$.
-- **Auditability**: The use of `updated_at` on a ledger should be a smart compromise. In the design doc, I can frame this as: "While the ledger is logically append-only, the `status` and `updated_at` fields allow for atomic state transitions (e.g., fulfilling a PENDING transaction) while maintaining a timestamped audit trail of when the finality occurred."
+## E-R Diagram
 
-### Migration Process
+> Link to E-R diagram: **[dbdesigner.net diagram — Demo Credit Wallet Service](https://dbdesigner.page.link/nct7WquZHf6xkP9h6)**
+>
+![ER Diagram PNG](./lendsqr-be-assessment---demo-credit-wallet-service.png)
 
-- Create migration files
+The schema comprises three tables with the following relationships:
 
-```sh
-~/sandbox/demo-credit on  feat/migrations !  via  v20.20.0 is 󰏗 v1.0.0
-❯ npx knex --knexfile knexfile.ts migrate:make create_users_table
-Requiring external module ts-node/register
-◇ injected env (9) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
-Using environment: development
-Using environment: development
-Using environment: development
-Created Migration: /home/ayomide/sandbox/demo-credit/db/migrations/20260508105239_create_users_table.ts
+- `users` ← one-to-one → `wallets` (via `wallets.user_id`)
+- `wallets` ← one-to-many → `transactions` (via `sender_wallet_id` and `receiver_wallet_id`)
 
-~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0 7s
-❯ npx knex --knexfile knexfile.ts migrate:make create_wallets_table
-Requiring external module ts-node/register
-◇ injected env (9) from .env // tip: ⌁ auth for agents [www.vestauth.com]
-Using environment: development
-Using environment: development
-Using environment: development
-Created Migration: /home/ayomide/sandbox/demo-credit/db/migrations/20260508105309_create_wallets_table.ts
+---
 
-~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0 4s
-❯ npx knex --knexfile knexfile.ts migrate:make create_transactions_table
-Requiring external module ts-node/register
-◇ injected env (9) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
-Using environment: development
-Using environment: development
-Using environment: development
-Created Migration: /home/ayomide/sandbox/demo-credit/db/migrations/20260508105326_create_transactions_table.ts
+## Database Design
 
-~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0 3s
-❯ ls db/migrations/
-20260508105239_create_users_table.ts
-20260508105309_create_wallets_table.ts
-20260508105326_create_transactions_table.ts
+### Schema
+
+```sql
+-- Users
+CREATE TABLE users (
+  id            char(36)      NOT NULL PRIMARY KEY,
+  first_name    varchar(255)  NOT NULL,
+  last_name     varchar(255)  NOT NULL,
+  email         varchar(255)  NOT NULL UNIQUE,
+  phone_number  varchar(255)  NOT NULL UNIQUE,
+  created_at    timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                              ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Wallets (one per user)
+CREATE TABLE wallets (
+  id          char(36)       NOT NULL PRIMARY KEY,
+  user_id     char(36)       NOT NULL UNIQUE,
+  balance     decimal(20,2)  NOT NULL DEFAULT 0.00,
+  created_at  timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP
+                             ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- Transactions (financial ledger)
+CREATE TABLE transactions (
+  id                  char(36)      NOT NULL PRIMARY KEY,
+  reference           varchar(255)  NOT NULL UNIQUE,
+  type                ENUM('FUND', 'TRANSFER', 'WITHDRAWAL') NOT NULL,
+  amount              decimal(20,2) NOT NULL,
+  sender_wallet_id    char(36)      DEFAULT NULL,
+  receiver_wallet_id  char(36)      DEFAULT NULL,
+  status              ENUM('PENDING', 'SUCCESS', 'FAILED') NOT NULL,
+  created_at          timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at          timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                    ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT transactions_chk_1 CHECK (amount > 0),
+  FOREIGN KEY (sender_wallet_id) REFERENCES wallets(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  FOREIGN KEY (receiver_wallet_id) REFERENCES wallets(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE INDEX idx_transactions_sender   ON transactions (sender_wallet_id);
+CREATE INDEX idx_transactions_receiver ON transactions (receiver_wallet_id);
 ```
 
-- Run Migration Script and verify in MySQL after writing the migration code in previously created files
+### Design Rationale
+
+**`DECIMAL(20,2)` for all money columns.** Floating-point types (`FLOAT`, `DOUBLE`) are unsuitable for financial values due to IEEE 754 rounding errors. `DECIMAL(20,2)` stores exact cent-precision values.
+
+**Separate `wallets` table.** A user _has_ a wallet — they are distinct entities. The one-to-one relationship is enforced with a `UNIQUE` constraint on `wallets.user_id`. This keeps the data model clean and makes it straightforward to extend to multiple wallets per user in future.
+
+**Nullable `sender_wallet_id` and `receiver_wallet_id`.** Transaction types are asymmetric: `FUND` has no sender, `WITHDRAWAL` has no receiver, `TRANSFER` has both. Nullable FKs reflect this accurately rather than using a sentinel wallet or conflating unrelated concepts.
+
+**`UNIQUE` reference on transactions.** Every transaction is assigned a unique `DC-{timestamp}-{random}` reference on creation. The DB-level unique constraint is the idempotency guard — duplicate inserts with the same reference are rejected by the database regardless of application state.
+
+**`ON DELETE RESTRICT` on all FKs.** A user or wallet cannot be deleted if transactions reference them. In a fintech system, financial records must be preserved regardless of account lifecycle state. This is a non-negotiable data integrity constraint.
+
+**BTREE indexes on `sender_wallet_id` and `receiver_wallet_id`.** While foreign key constraints require indexed columns, relying on implicit behavior is not ideal for query planning clarity and maintainability. Explicit indexes were created intentionally for predictable performance. MySQL InnoDB does not auto-index FK columns (only the referenced PK). Without explicit indexes, transaction history queries become full table scans as the ledger grows. With BTREE indexes, lookup by wallet ID is O(log n).
+
+**`updated_at` on `transactions`.** A financial ledger is logically append-only, but the `status` column transitions from `PENDING` to `SUCCESS` (or `FAILED`). The `updated_at` field tracks when that state transition occurred — a timestamped audit trail of finality rather than an arbitrary mutation log.
+
+---
+
+## API Reference
+
+All wallet endpoints require a `Bearer` token in the `Authorization` header.
+Base path: `/api/v1`
+
+### Health Check
 
 ```sh
-~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0
-❯ npm run migrate
-
-> demo-credit@1.0.0 migrate
-> knex --knexfile knexfile.ts migrate:latest
-
-Requiring external module ts-node/register
-◇ injected env (9) from .env // tip: ⌘ override existing { override: true }
-Using environment: development
-Batch 1 run: 3 migrations
-
-~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0 10s
-❯ mysql -u root -p demo_credit -e "SHOW TABLES;"
-Enter password:
-+-----------------------+
-| Tables_in_demo_credit |
-+-----------------------+
-| knex_migrations       |
-| knex_migrations_lock  |
-| transactions          |
-| users                 |
-| wallets               |
-+-----------------------+
-
-~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0 7s
-❯ mysql -u root -p demo_credit -e "DESCRIBE users;"
-Enter password:
-+--------------+--------------+------+-----+-------------------+-----------------------------------------------+
-| Field        | Type         | Null | Key | Default           | Extra                                         |
-+--------------+--------------+------+-----+-------------------+-----------------------------------------------+
-| id           | char(36)     | NO   | PRI | NULL              |                                               |
-| first_name   | varchar(255) | NO   |     | NULL              |                                               |
-| last_name    | varchar(255) | NO   |     | NULL              |                                               |
-| email        | varchar(255) | NO   | UNI | NULL              |                                               |
-| phone_number | varchar(255) | NO   | UNI | NULL              |                                               |
-| created_at   | timestamp    | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED                             |
-| updated_at   | timestamp    | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED on update CURRENT_TIMESTAMP |
-+--------------+--------------+------+-----+-------------------+-----------------------------------------------+
-
-~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0 9s
-❯ mysql -u root -p demo_credit -e "DESCRIBE wallets;"
-Enter password:
-+------------+---------------+------+-----+-------------------+-----------------------------------------------+
-| Field      | Type          | Null | Key | Default           | Extra                                         |
-+------------+---------------+------+-----+-------------------+-----------------------------------------------+
-| id         | char(36)      | NO   | PRI | NULL              |                                               |
-| user_id    | char(36)      | NO   | UNI | NULL              |                                               |
-| balance    | decimal(20,2) | NO   |     | 0.00              |                                               |
-| created_at | timestamp     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED                             |
-| updated_at | timestamp     | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED on update CURRENT_TIMESTAMP |
-+------------+---------------+------+-----+-------------------+-----------------------------------------------+
-
-~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0 5s
-❯ mysql -u root -p demo_credit -e "DESCRIBE transactions;"
-Enter password:
-+--------------------+--------------------------------------+------+-----+-------------------+-----------------------------------------------+
-| Field              | Type                                 | Null | Key | Default           | Extra                                         |
-+--------------------+--------------------------------------+------+-----+-------------------+-----------------------------------------------+
-| id                 | char(36)                             | NO   | PRI | NULL              |                                               |
-| reference          | varchar(255)                         | NO   | UNI | NULL              |                                               |
-| type               | enum('FUND','TRANSFER','WITHDRAWAL') | NO   |     | NULL              |                                               |
-| amount             | decimal(20,2)                        | NO   |     | NULL              |                                               |
-| sender_wallet_id   | char(36)                             | YES  | MUL | NULL              |                                               |
-| receiver_wallet_id | char(36)                             | YES  | MUL | NULL              |                                               |
-| status             | enum('PENDING','SUCCESS','FAILED')   | NO   |     | NULL              |                                               |
-| created_at         | timestamp                            | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED                             |
-| updated_at         | timestamp                            | NO   |     | CURRENT_TIMESTAMP | DEFAULT_GENERATED on update CURRENT_TIMESTAMP |
-+--------------------+--------------------------------------+------+-----+-------------------+-----------------------------------------------+
-
-~/sandbox/demo-credit on  feat/migrations !?  via  v20.20.0 is 󰏗 v1.0.0 7s
-❯
+GET /health
 ```
 
-### Repository
+Response:
 
-- Used `findByIdForUpdate` inside the [Wallet Repository](/src/repositories/wallet.repository.ts) file as it only makes sense inside a Knex transaction — calling it outside one won't acquire a lock because there's no transaction context to hold it. The service layer will always call it with a `trx` argument. That's enforced by the method signature.
-
-- `create` on `WalletRepository` takes a mandatory `trx` argument because wallet creation always happens inside the same transaction as user creation — we never create a user without immediately creating their wallet atomically. There's no valid use case for creating a wallet outside a transaction.
-
-- `createTransaction` lives in `WalletRepository`, not a separate repository, because transactions are always created as part of a wallet operation. They're never created standalone.
-
-- In order to avoid relying on `decimal.js` in this MVP and to address the float precision issue, a purposeful trade-off was made to include rounding at the database boundary.
-
-### User Module - user creation
-
-- Had to add an `env` flag that bypasses Karma in development due to issues I was having with the Adjutor Test/Live mode toggle. This resulted in my smoke test returning user creation and eligibility issues
-
-```sh
-~/sandbox/demo-credit on  feat/user-module !+?  via  v20.20.0 is 󰏗 v1.0.0
-❯ curl -s -X POST http://localhost:3000/api/v1/users   -H "Content-Type: application/json"   -d '{
-    "first_name": "Ayomide",
-    "last_name": "Kayode",
-    "email": "ayomide.smoketest.01@gmail.com",
-    "phone_number": "08012345678"
-  }' | jq
-{
-  "status": "error",
-  "message": "User is not eligible for onboarding"
-}
+```json
+{ "status": "ok", "database": "connected" }
 ```
 
-- This lets me complete and smoke test the rest of the implementation without being blocked. In production (`NODE_ENV=production`), the bypass is never active. The real Karma check runs. I'm using this not necessarily as a hack, just normal development pattern.
+---
+
+### Users
+
+#### Register a user
+
+**Terminal Example:**
 
 ```sh
 ~/sandbox/demo-credit on  feat/user-module !+?  via  v20.20.0 is 󰏗 v1.0.0 3s
@@ -219,11 +231,84 @@ Enter password:
 }
 ```
 
-### Wallet Module - testing wallet endpoints after creating files
+```sh
+POST /api/v1/users
+Content-Type: application/json
+```
 
-- For the transfers, I made sure wallets are always locked in ascending ID order regardless of who is sender and receiver. This prevents deadlocks when two concurrent transfers involve the same two wallets in opposite directions — both requests acquire locks in the same order, so neither can deadlock waiting on the other.
+Request body:
 
-- After creating the three wallet files and updating the routes index, ran a smoke test on all four wallet endpoints.
+```json
+{
+  "first_name": "Ayomide",
+  "last_name": "Kayode",
+  "email": "ayomide@example.com",
+  "phone_number": "08012345678"
+}
+```
+
+Success `201`:
+
+```json
+{
+  "status": "success",
+  "message": "Account created successfully",
+  "data": {
+    "user": {
+      "id": "59a5d16c-311e-4497-a180-d0d0995ebb07",
+      "first_name": "Ayomide",
+      "last_name": "Kayode",
+      "email": "ayomide@example.com",
+      "phone_number": "08012345678",
+      "created_at": "2026-05-09T11:40:17.938Z",
+      "updated_at": "2026-05-09T11:40:17.938Z"
+    },
+    "token": "<JWT>"
+  }
+}
+```
+
+Error cases:
+
+- `400` — invalid request body (missing field, bad email format)
+- `403` — email found in Lendsqr Adjutor Karma blacklist
+- `409` — email or phone number already registered
+
+#### Get user profile
+
+```sh
+GET /api/v1/users/:id
+Authorization: Bearer <token>
+```
+
+**Example:**
+
+```sh
+~/sandbox/demo-credit on  feat/readme-and-docs !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s http://localhost:3000/api/v1/users/59a5d16c-311e-4497-a180-d0d0995ebb07 \
+  -H "Authorization: Bearer $TOKEN" | jq
+{
+  "status": "success",
+  "message": "User retrieved successfully",
+  "data": {
+    "id": "59a5d16c-311e-4497-a180-d0d0995ebb07",
+    "first_name": "Ayomide",
+    "last_name": "Kayode",
+    "email": "ayomide.smoketest.01@gmail.com",
+    "phone_number": "08012345678",
+    "created_at": "2026-05-09T11:40:18.000Z",
+    "updated_at": "2026-05-09T11:40:18.000Z"
+  }
+}
+```
+
+Returns the authenticated user's own profile. A user cannot fetch another user's profile — mismatched token and path ID returns `403`.
+
+---
+
+### Wallets
+
+**Terminal Example:**
 
 ```sh
 ~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0 5s
@@ -280,10 +365,56 @@ Enter password:
     "updated_at": "2026-05-09T18:02:21.000Z"
   }
 }
-
 ```
 
-- To test the transfer endpoint, I created another user and then use their `id` as the `receiver_id`.
+#### Get wallet
+
+```sh
+GET /api/v1/wallets/me
+Authorization: Bearer <token>
+```
+
+Success `200`:
+
+```json
+{
+  "status": "success",
+  "message": "Wallet retrieved successfully",
+  "data": {
+    "id": "3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e",
+    "user_id": "59a5d16c-311e-4497-a180-d0d0995ebb07",
+    "balance": 0,
+    "created_at": "2026-05-09T11:40:18.000Z",
+    "updated_at": "2026-05-09T11:40:18.000Z"
+  }
+}
+```
+
+#### Fund wallet
+
+```sh
+POST /api/v1/wallets/fund
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{ "amount": 5000 }
+```
+
+Success `200` — returns updated wallet with new balance.
+
+Error cases:
+
+- `400` — amount is zero, negative, or has more than 2 decimal places
+
+#### Transfer funds
+
+Another `user_id` must exist to use the transfer logic. Create another user if you have only one user in the db.
+
+**Example:**
 
 ```sh
 # Create new user
@@ -334,7 +465,7 @@ Enter password:
 
 ```
 
-- Verify funds was received by Eseose
+- Verify funds was received by Eseose (Second User)
 
 ```sh
 # Change Token
@@ -355,91 +486,169 @@ Enter password:
     "updated_at": "2026-05-09T18:46:01.000Z"
   }
 }
+```
 
-# Fund Wallet
-~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
-❯ curl -s -X POST http://localhost:3000/api/v1/wallets/fund \
+```sh
+POST /api/v1/wallets/transfer
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{
+  "receiver_id": "b64e3d89-383a-43eb-a402-c089e1cb5568",
+  "amount": 1500
+}
+```
+
+Success `200` — returns sender's updated wallet.
+
+Error cases:
+
+- `400` — invalid amount, self-transfer, insufficient balance
+- `404` — receiver user not found
+
+#### Withdraw funds
+
+```sh
+POST /api/v1/wallets/withdraw
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{ "amount": 1000 }
+```
+
+Success `200` — returns updated wallet with reduced balance.
+
+Error cases:
+
+- `400` — invalid amount or insufficient balance
+
+**Example:**
+
+```sh
+~/sandbox/demo-credit on  feat/readme-and-docs !?  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST http://localhost:3000/api/v1/wallets/withdraw \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"amount": 1000}' | jq
+  -d '{"amount": 10000}' | jq
 {
-  "status": "success",
-  "message": "Wallet funded successfully",
-  "data": {
-    "id": "da3ee036-32b7-417f-a4b1-1df0b32cb628",
-    "user_id": "b64e3d89-383a-43eb-a402-c089e1cb5568",
-    "balance": 2500,
-    "created_at": "2026-05-09T18:18:33.000Z",
-    "updated_at": "2026-05-09T18:46:01.000Z"
-  }
+  "status": "error",
+  "message": "Insufficient balance"
 }
-
-~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
-❯
 ```
 
-- Verifying transaction table directly from MySQL
+---
 
-```sh
-~/sandbox/demo-credit on  feat/wallet-module !?  via  v20.20.0 is 󰏗 v1.0.0
-❯ mysql -u root -p demo_credit
-Enter password:
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
+## Quick Start
 
-Welcome to the MySQL monitor.  Commands end with ; or \g.
-Your MySQL connection id is 28
-Server version: 8.0.45-0ubuntu0.24.04.1 (Ubuntu)
+1. [Clone repo](#installation)
+2. [Install dependencies](#installation)
+3. [Create `.env`](#environment-variables)
+4. [Create MySQL database](#create-the-database)
+5. [Run migrations](#running-migrations)
+6. [Start dev server](#start-the-server)
+7. [Run tests](#running-tests)
 
-Copyright (c) 2000, 2026, Oracle and/or its affiliates.
+### Prerequisites
 
-Oracle is a registered trademark of Oracle Corporation and/or its
-affiliates. Other names may be trademarks of their respective
-owners.
+- Recommended: Node.js v20+ LTS (via nvm)
+- MySQL 8.0
 
-Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+### Installation
 
-mysql> SELECT id, reference, type, amount, sender_wallet_id, receiver_wallet_id, status, created_at FROM transactions ORDER BY created_at DESC;
-+--------------------------------------+--------------------+------------+---------+--------------------------------------+--------------------------------------+---------+---------------------+
-| id                                   | reference          | type       | amount  | sender_wallet_id                     | receiver_wallet_id                   | status  | created_at          |
-+--------------------------------------+--------------------+------------+---------+--------------------------------------+--------------------------------------+---------+---------------------+
-| 69a67685-567c-4ee7-a563-66bd5a245387 | DC-MOYPM84G-77R2II | FUND       | 1000.00 | NULL                                 | da3ee036-32b7-417f-a4b1-1df0b32cb628 | SUCCESS | 2026-05-09 20:01:04 |
-| 0ca4210b-1946-44e7-9b2a-f359d02d1fc5 | DC-MOYP2VL5-O0VGYG | TRANSFER   | 1500.00 | 3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e | da3ee036-32b7-417f-a4b1-1df0b32cb628 | SUCCESS | 2026-05-09 19:46:01 |
-| 262a1565-e0ca-4d06-87f1-1bda3e343576 | DC-MOYNJ9KI-SZPWBX | WITHDRAWAL | 1000.00 | 3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e | NULL                                 | SUCCESS | 2026-05-09 19:02:46 |
-| aafc6e73-ae66-4dfb-96de-68e441d8496f | DC-MOYNIQ3A-R40SAB | FUND       | 5000.00 | NULL                                 | 3b4d5d5b-fb99-4e27-a40a-46cf3e9ca97e | SUCCESS | 2026-05-09 19:02:21 |
-+--------------------------------------+--------------------+------------+---------+--------------------------------------+--------------------------------------+---------+---------------------+
-4 rows in set (0.01 sec)
-
-mysql>
+```bash
+git clone <repo-url>
+cd demo-credit
+npm install
 ```
 
-### Tests
+### Environment Variables
 
-Created tests to cover the following test suites:
+```bash
+cp .env.example .env
+```
 
-- **User tests** (positive + negative):
-  - Register a clean user → `201` with user and token
-  - Register with blacklisted email → `403`
-  - Register with duplicate email → `409`
-  - Register with invalid body (missing field, bad email) → `400`
-  - Get own profile with valid token → `200`
-  - Get another user's profile → `403`
-  - Get profile with no token → `401`
-- **Wallet tests** (positive + negative):
-  - Fund wallet → balance increases
-  - Fund with amount ≤ 0 → `400`
-  - Withdraw within balance → balance decreases
-  - Withdraw more than balance → `400`
-  - Transfer to another user → both balances correct
-  - Transfer to self → `400`
-  - Transfer with insufficient balance → `400`
-  - Transfer with invalid receiver ID → `404`
-  - All wallet endpoints without token → `401`
+Edit `.env` with your values:
 
-First set of test failed because my mock implementation was returning `() => mockUserRepo` which was just a plain arrow function.So when TypeScript/Vitest tried to run it against the actual code `new UserRepository()`, JavaScript throws the error.
+```env
+NODE_ENV=development
+PORT=3000
+
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=demo_credit
+
+JWT_SECRET=your_jwt_secret
+ADJUTOR_API_KEY=your_adjutor_api_key
+
+# Set to true to bypass Karma check in development only.
+# Never active when NODE_ENV=production.
+SKIP_KARMA_CHECK=false
+```
+
+### Create the database
+
+```bash
+mysql -u root -p -e "CREATE DATABASE demo_credit;"
+```
+
+### Start the server
+
+```bash
+npm run dev
+```
+
+---
+
+## Running Migrations
+
+```bash
+npm run migrate
+```
+
+Verify tables:
+
+```bash
+mysql -u root -p demo_credit -e "SHOW TABLES;"
+```
+
+```mysql
++-----------------------+
+| Tables_in_demo_credit |
++-----------------------+
+| knex_migrations       |
+| knex_migrations_lock  |
+| transactions          |
+| users                 |
+| wallets               |
++-----------------------+
+```
+
+To roll back:
+
+```bash
+npm run migrate:rollback
+```
+
+---
+
+## Running Tests
+
+```bash
+npm test
+```
 
 ```sh
-~/sandbox/demo-credit on  feat/tests ?  via  v20.20.0 is 󰏗 v1.0.0
+~/sandbox/demo-credit on  feat/tests !?  via  v20.20.0 is 󰏗 v1.0.0
 ❯ npm test
 
 > demo-credit@1.0.0 test
@@ -448,188 +657,93 @@ First set of test failed because my mock implementation was returning `() => moc
 
  RUN  v4.1.5 /home/ayomide/sandbox/demo-credit
 
-stderr | tests/wallet.test.ts > WalletService > getWallet > returns the wallet for a valid user
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
+ ✓ tests/wallet.test.ts (20 tests) 77ms
+ ✓ tests/user.test.ts (8 tests) 37ms
 
-stderr | tests/wallet.test.ts > WalletService > getWallet > throws 404 when wallet does not exist
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > fund > increases wallet balance by the funded amount
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > fund > creates a FUND transaction with PENDING then SUCCESS status
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > fund > throws 400 when amount is zero
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > fund > throws 400 when amount is negative
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > fund > throws 400 when amount exceeds 2 decimal places
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > fund > throws 404 when wallet does not exist
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > withdraw > decreases wallet balance by the withdrawn amount
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > withdraw > creates a WITHDRAWAL transaction record
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > withdraw > throws 400 when withdrawing more than available balance
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > withdraw > throws 400 when amount is zero or negative
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > withdraw > throws 400 when amount exceeds 2 decimal places
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > transfer > returns updated sender wallet after transfer
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > transfer > debits sender and credits receiver with correct amounts
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > transfer > creates a TRANSFER transaction record
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > transfer > throws 400 when sender and receiver are the same user
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > transfer > throws 400 when sender has insufficient balance
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > transfer > throws 404 when receiver user does not exist
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/wallet.test.ts > WalletService > transfer > throws 400 when amount exceeds 2 decimal places
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
- ❯ tests/wallet.test.ts (20 tests | 20 failed) 119ms
-       × returns the wallet for a valid user 24ms
-       × throws 404 when wallet does not exist 4ms
-       × increases wallet balance by the funded amount 5ms
-       × creates a FUND transaction with PENDING then SUCCESS status 3ms
-       × throws 400 when amount is zero 2ms
-       × throws 400 when amount is negative 8ms
-       × throws 400 when amount exceeds 2 decimal places 11ms
-       × throws 404 when wallet does not exist 10ms
-       × decreases wallet balance by the withdrawn amount 5ms
-       × creates a WITHDRAWAL transaction record 2ms
-       × throws 400 when withdrawing more than available balance 2ms
-       × throws 400 when amount is zero or negative 5ms
-       × throws 400 when amount exceeds 2 decimal places 2ms
-       × returns updated sender wallet after transfer 3ms
-       × debits sender and credits receiver with correct amounts 2ms
-       × creates a TRANSFER transaction record 2ms
-       × throws 400 when sender and receiver are the same user 2ms
-       × throws 400 when sender has insufficient balance 3ms
-       × throws 404 when receiver user does not exist 3ms
-       × throws 400 when amount exceeds 2 decimal places 4ms
-stderr | tests/user.test.ts > UserService > register > registers a clean user and returns user object with JWT
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/user.test.ts > UserService > register > calls Karma with the registering email
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/user.test.ts > UserService > register > throws 403 when email is on the Karma blacklist
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/user.test.ts > UserService > register > throws 409 on duplicate email (fast path pre-check)
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/user.test.ts > UserService > register > throws 409 on DB duplicate key constraint (race / duplicate phone)
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/user.test.ts > UserService > register > propagates 503 when Karma service is unreachable
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/user.test.ts > UserService > findById > returns the user when found
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
-stderr | tests/user.test.ts > UserService > findById > throws 404 when user does not exist
-[vitest] The vi.fn() mock did not use 'function' or 'class' in its implementation, see https://vitest.dev/api/vi#vi-spyon for examples.
-
- ❯ tests/user.test.ts (8 tests | 8 failed) 26ms
-       × registers a clean user and returns user object with JWT 10ms
-       × calls Karma with the registering email 3ms
-       × throws 403 when email is on the Karma blacklist 5ms
-       × throws 409 on duplicate email (fast path pre-check) 1ms
-       × throws 409 on DB duplicate key constraint (race / duplicate phone) 1ms
-       × propagates 503 when Karma service is unreachable 1ms
-       × returns the user when found 1ms
-       × throws 404 when user does not exist 1ms
-
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯ Failed Tests 28 ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-
- FAIL  tests/user.test.ts > UserService > register > registers a clean user and returns user object with JWT
- FAIL  tests/user.test.ts > UserService > register > calls Karma with the registering email
- FAIL  tests/user.test.ts > UserService > register > throws 403 when email is on the Karma blacklist
- FAIL  tests/user.test.ts > UserService > register > throws 409 on duplicate email (fast path pre-check)
- FAIL  tests/user.test.ts > UserService > register > throws 409 on DB duplicate key constraint (race / duplicate phone)
- FAIL  tests/user.test.ts > UserService > register > propagates 503 when Karma service is unreachable
- FAIL  tests/user.test.ts > UserService > findById > returns the user when found
- FAIL  tests/user.test.ts > UserService > findById > throws 404 when user does not exist
-TypeError: () => mockUserRepo is not a constructor
- ❯ new UserService src/services/user.service.ts:13:22
-     11|
-     12| export class UserService {
-     13|   private userRepo = new UserRepository();
-       |                      ^
-     14|   private walletRepo = new WalletRepository();
-     15|   private karmaService = new KarmaService();
- ❯ tests/user.test.ts:74:19
-
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/28]⎯
-
- FAIL  tests/wallet.test.ts > WalletService > getWallet > returns the wallet for a valid user
- FAIL  tests/wallet.test.ts > WalletService > getWallet > throws 404 when wallet does not exist
- FAIL  tests/wallet.test.ts > WalletService > fund > increases wallet balance by the funded amount
- FAIL  tests/wallet.test.ts > WalletService > fund > creates a FUND transaction with PENDING then SUCCESS status
- FAIL  tests/wallet.test.ts > WalletService > fund > throws 400 when amount is zero
- FAIL  tests/wallet.test.ts > WalletService > fund > throws 400 when amount is negative
- FAIL  tests/wallet.test.ts > WalletService > fund > throws 400 when amount exceeds 2 decimal places
- FAIL  tests/wallet.test.ts > WalletService > fund > throws 404 when wallet does not exist
- FAIL  tests/wallet.test.ts > WalletService > withdraw > decreases wallet balance by the withdrawn amount
- FAIL  tests/wallet.test.ts > WalletService > withdraw > creates a WITHDRAWAL transaction record
- FAIL  tests/wallet.test.ts > WalletService > withdraw > throws 400 when withdrawing more than available balance
- FAIL  tests/wallet.test.ts > WalletService > withdraw > throws 400 when amount is zero or negative
- FAIL  tests/wallet.test.ts > WalletService > withdraw > throws 400 when amount exceeds 2 decimal places
- FAIL  tests/wallet.test.ts > WalletService > transfer > returns updated sender wallet after transfer
- FAIL  tests/wallet.test.ts > WalletService > transfer > debits sender and credits receiver with correct amounts
- FAIL  tests/wallet.test.ts > WalletService > transfer > creates a TRANSFER transaction record
- FAIL  tests/wallet.test.ts > WalletService > transfer > throws 400 when sender and receiver are the same user
- FAIL  tests/wallet.test.ts > WalletService > transfer > throws 400 when sender has insufficient balance
- FAIL  tests/wallet.test.ts > WalletService > transfer > throws 404 when receiver user does not exist
- FAIL  tests/wallet.test.ts > WalletService > transfer > throws 400 when amount exceeds 2 decimal places
-TypeError: () => mockWalletRepo is not a constructor
- ❯ new WalletService src/services/wallet.service.ts:16:24
-     14|
-     15| export class WalletService {
-     16|   private walletRepo = new WalletRepository();
-       |                        ^
-     17|   private userRepo = new UserRepository();
-     18|
- ❯ tests/wallet.test.ts:93:21
-
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/28]⎯
+ Test Files  2 passed (2)
+      Tests  28 passed (28)
+   Start at  06:08:06
+   Duration  2.04s (transform 1.04s, setup 0ms, import 2.50s, tests 115ms, environment 1ms)
 
 
- Test Files  2 failed (2)
-      Tests  28 failed (28)
-   Start at  01:52:52
-   Duration  2.53s (transform 1.03s, setup 0ms, import 2.11s, tests 144ms, environment 1ms)
+~/sandbox/demo-credit on  feat/tests !?  via  v20.20.0 is 󰏗 v1.0.0 4s
+❯
 ```
 
-Fix: I replaced `vi.mocked(UserRepository).mockImplementation(() => mockUserRepo as any);` or its instances in both test files with
+### Test coverage
 
-```typescript
-vi.mocked(UserRepository).mockImplementation(
-  function () {
-    return mockUserRepo as any;
-  } as any
-);
-```
+Tests operate at the service layer with all repositories, the Karma service, and the database fully mocked. No DB or network calls are made during test runs.
+
+Tests intentionally run as pure unit tests rather than integration tests to guarantee determinism, speed, and isolation of business rules.
+
+**User tests (8):** registration happy path, Karma blacklist rejection (403), duplicate email fast-path (409), DB-level `ER_DUP_ENTRY` handling for phone number uniqueness and race conditions (409), Karma service 503 propagation, `findById` success and 404.
+
+**Wallet tests (20):** `getWallet` success and 404; `fund` balance increase, PENDING→SUCCESS transaction lifecycle, zero/negative/sub-cent amount rejection, wallet not found; `withdraw` balance decrease, transaction record creation, insufficient funds rejection, invalid amount rejection; `transfer` happy path (sender debit, receiver credit, transaction record), self-transfer rejection, insufficient balance rejection, receiver-not-found (404), sub-cent precision rejection.
+
+**Not yet covered (documented for completeness):**
+
+- Auth middleware unit tests — missing/invalid/malformed token paths
+- Controller-layer tests — Zod validation, ownership check on `GET /users/:id`
+- Integration tests — HTTP-level request/response with supertest
+
+These are the natural next layer and would be added before a production release.
+
+---
+
+## Design Decisions and Trade-offs
+
+### Transaction scoping
+
+Every money-moving operation (`fund`, `transfer`, `withdraw`) runs inside a Knex transaction. Balance checks, transaction record creation, balance updates, and status transitions all happen atomically — the database either applies all changes or none. There is no window where a partial state is visible.
+
+### Row-level locking in transfers
+
+Before modifying any wallet balance, the service acquires a `SELECT ... FOR UPDATE` lock on the wallet row via Knex's `.forUpdate()`. For transfers involving two wallets, locks are always acquired in ascending wallet ID order regardless of which wallet is sender and which is receiver. This prevents deadlocks when two concurrent transfers involve the same two wallets in opposite directions — both transactions acquire locks in the same order, so neither can deadlock waiting on the other.
+
+### PENDING → SUCCESS transaction lifecycle
+
+Transaction records are inserted with `status: 'PENDING'` before any balance mutation occurs. After the balance update succeeds, the status is updated to `SUCCESS` within the same Knex transaction. This pattern reflects production state machine awareness — a failed balance update would leave the transaction in `PENDING` or allow rollback to `FAILED` without corrupting the ledger.
+
+### Amount precision enforcement
+
+The service layer rejects any amount where `Math.round(amount * 100) / 100 !== amount` — i.e. any value that cannot be represented exactly as a two-decimal-place number. This ensures that values the database cannot store as `DECIMAL(20,2)` never enter balance arithmetic. The DB-level `CHECK (amount > 0)` constraint is the final guard.
+
+### Balance arithmetic precision
+
+`mysql2` returns `DECIMAL` columns as strings over the wire. The repository layer parses these with `parseFloat(...).toFixed(2)` on read and rounds to `toFixed(2)` on write. For a production system handling large volumes, the correct approach is a dedicated decimal library (`decimal.js`). This is documented as a known extension point.
+
+### Karma check fail-closed
+
+If the Adjutor API is unreachable or returns an unexpected error during registration, the request is rejected with `503`. Users are never silently allowed through when eligibility cannot be confirmed. A 5-second timeout prevents a slow upstream from stalling the registration flow indefinitely.
+
+### Karma check in development
+
+During development, the Adjutor test mode toggle in the dashboard could not be set to live mode — the toggle reverted to test mode immediately after switching. In test mode, the Adjutor API returns `200` with an empty body `{}` for every identity, making it impossible to simulate a clean user registration. An escalation email was sent to `careers@lendsqr.com` and `support@lendsqr.com` and is awaiting response.
+
+To unblock development, an environment flag `SKIP_KARMA_CHECK=true` bypasses the Karma check when `NODE_ENV=development`. This bypass is never active when `NODE_ENV=production` — the check is conditional on both flags simultaneously. The Karma integration code itself is complete and correct; the bypass is a development workflow accommodation, not a production shortcut.
+
+### Authentication
+
+The assessment specifies "a faux token based authentication will suffice." JWT tokens (HS256, 24-hour expiry) are issued on registration and verified by middleware on all protected routes. The JWT payload is validated at runtime — the middleware does not blindly cast the decoded payload but checks that it is a non-null object containing a string `id` property before attaching `req.user`.
+
+### No `@/` path aliases
+
+Path aliases were removed from `tsconfig.json`. Aliases only affect the TypeScript type checker — `ts-node` and the Node.js runtime do not resolve them without `tsconfig-paths`, which adds setup complexity for no meaningful gain at this folder depth.
+
+### `knexfile.ts` is self-contained
+
+`knexfile.ts` reads `process.env` directly rather than importing from `src/config/env.ts`. The Knex CLI is a separate consumer from the application — sharing config via a cross-boundary import caused a TypeScript `rootDir` violation. Both consumers read the same env variables; the duplication is structurally correct.
+
+---
+
+## Known Limitations and Production Extensions
+
+| Area               | Current state                                            | Production approach                                               |
+| ------------------ | -------------------------------------------------------- | ----------------------------------------------------------------- |
+| Decimal arithmetic | `parseFloat` + `toFixed(2)` rounding at DB boundary      | `decimal.js` or `big.js` throughout the service layer             |
+| Idempotency        | Server-generated `reference` with DB `UNIQUE` constraint | Caller-supplied idempotency key with dedicated tracking table     |
+| Auth               | Faux JWT, shared secret                                  | Asymmetric keys (RS256), refresh tokens, token revocation         |
+| Karma in dev       | Bypassed via `SKIP_KARMA_CHECK`                          | Adjutor live mode (pending support response)                      |
+| Test coverage      | Service layer only                                       | Add middleware unit tests + HTTP integration tests with supertest |
+| Wallet limits      | None                                                     | Per-wallet daily limits, transaction velocity checks              |
+| Soft deletes       | Hard constraint via `ON DELETE RESTRICT`                 | Soft delete with `deleted_at`, account deactivation flow          |
