@@ -17,6 +17,15 @@ A transactional wallet service API built as a backend engineering assessment for
 
 ---
 
+## Deliverables
+
+- 🌐 **Live API Base URL:** **_[API URL](https://ayomidekay-lendsqr-be-test.up.railway.app)_**
+- 📝 **Documentation Review:** **_[Google Docs](https://docs.google.com/document/d/12cqkq8Rv2dXOXhRXzI0f6wXz9jLSHAg7DYKOtK_uZL4/edit?usp=sharing)_**
+- 📹 **Walkthrough Video:** **_[Loom Video](https://www.loom.com/share/31e90e3c41234e9c86299d6569a17a48)_**
+- 📹 **POSTMAN Collection URL:** **_[Postman](https://documenter.getpostman.com/view/36662678/2sBXqQEcnU)_**
+
+---
+
 ## Tech Stack
 
 | Concern      | Technology                        |
@@ -747,3 +756,182 @@ Path aliases were removed from `tsconfig.json`. Aliases only affect the TypeScri
 | Test coverage      | Service layer only                                       | Add middleware unit tests + HTTP integration tests with supertest |
 | Wallet limits      | None                                                     | Per-wallet daily limits, transaction velocity checks              |
 | Soft deletes       | Hard constraint via `ON DELETE RESTRICT`                 | Soft delete with `deleted_at`, account deactivation flow          |
+
+---
+
+## Deployment
+
+```sh
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl https://ayomidekay-lendsqr-be-test.up.railway.app/
+health
+{"status":"ok","database":"connected"}
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST https://ayomidekay-lendsqr-be-test.up.r
+ailway.app/api/v1/users \
+  -H "Content-Type: application/json" \
+  -d '{"first_name":"Ayomide","last_name":"Kayode","email
+":"deploy.test@example.com","phone_number":"08099001122"}
+' | jq
+{
+  "status": "success",
+  "message": "Account created successfully",
+  "data": {
+    "user": {
+      "id": "66a8c6dd-73e5-4ca1-bf42-e2882c00e527",
+      "first_name": "Ayomide",
+      "last_name": "Kayode",
+      "email": "deploy.test@example.com",
+      "phone_number": "08099001122",
+      "created_at": "2026-05-11T07:06:04.808Z",
+      "updated_at": "2026-05-11T07:06:04.808Z"
+    },
+    "token": "eyJhbGci...<USER_TOKEN>"
+  }
+}
+
+# Get Wallet
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s https://ayomidekay-lendsqr-be-test.up.railway.app/api/v1/wallets/me -H "Authorization: Bearer $TOKEN" | jq
+{
+  "status": "success",
+  "message": "Wallet retrieved successfully",
+  "data": {
+    "id": "66b4355e-b339-449e-bb72-4d600b37677b",
+    "user_id": "66a8c6dd-73e5-4ca1-bf42-e2882c00e527",
+    "balance": 0,
+    "created_at": "2026-05-11T07:06:05.000Z",
+    "updated_at": "2026-05-11T07:06:05.000Z"
+  }
+}
+
+# Fund Wallet
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST https://ayomidekay-lendsqr-be-test.up.r
+ailway.app/api/v1/wallets/fund   -H "Authorization: Beare
+r $TOKEN"   -H "Content-Type: application/json"   -d '{"a
+mount": 50000}' | jq
+{
+  "status": "success",
+  "message": "Wallet funded successfully",
+  "data": {
+    "id": "66b4355e-b339-449e-bb72-4d600b37677b",
+    "user_id": "66a8c6dd-73e5-4ca1-bf42-e2882c00e527",
+    "balance": 50000,
+    "created_at": "2026-05-11T07:06:05.000Z",
+    "updated_at": "2026-05-11T07:28:10.000Z"
+  }
+}
+
+# Withdraw Fund
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST https://ayomidekay-lendsqr-be-test.up.r
+ailway.app/api/v1/wallets/withdraw   -H "Authorization: B
+earer $TOKEN"   -H "Content-Type: application/json"   -d
+'{"amount": 50010}' | jq
+{
+  "status": "error",
+  "message": "Insufficient balance"
+}
+
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST https://ayomidekay-lendsqr-be-test.up.railway.app/api/v1/wallets/withdraw   -H "Authorization: Bearer $TOKEN"   -H "Content-Type: application/json"   -d '{"amount": 1500}' | jq
+{
+  "status": "success",
+  "message": "Withdrawal successful",
+  "data": {
+    "id": "66b4355e-b339-449e-bb72-4d600b37677b",
+    "user_id": "66a8c6dd-73e5-4ca1-bf42-e2882c00e527",
+    "balance": 48500,
+    "created_at": "2026-05-11T07:06:05.000Z",
+    "updated_at": "2026-05-11T07:30:10.000Z"
+  }
+}
+
+# Get User
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s https://ayomidekay-lendsqr-be-test.up.railway.app/api/v1/users/66a8c6dd-73e5-4ca1-bf42-e2882c00e527   -H
+ "Authorization: Bearer $TOKEN" | jq
+{
+  "status": "success",
+  "message": "User retrieved successfully",
+  "data": {
+    "id": "66a8c6dd-73e5-4ca1-bf42-e2882c00e527",
+    "first_name": "Ayomide",
+    "last_name": "Kayode",
+    "email": "deploy.test@example.com",
+    "phone_number": "08099001122",
+    "created_at": "2026-05-11T07:06:05.000Z",
+    "updated_at": "2026-05-11T07:06:05.000Z"
+  }
+}
+
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯
+# Create new user for transfer test
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST https://ayomidekay-lendsqr-be-test.up.r
+ailway.app/api/v1/users -H "Content-Type: application/jso
+n" -d '{"first_name":"Eseose","last_name":"Lendsqr","emai
+l":"deploy.test01@example.com","phone_number":"0709911223
+3"}' | jq
+{
+  "status": "success",
+  "message": "Account created successfully",
+  "data": {
+    "user": {
+      "id": "debc2cbb-b851-4094-aef5-d49467e0c6a3",
+      "first_name": "Eseose",
+      "last_name": "Lendsqr",
+      "email": "deploy.test01@example.com",
+      "phone_number": "07099112233",
+      "created_at": "2026-05-11T07:36:26.779Z",
+      "updated_at": "2026-05-11T07:36:26.779Z"
+    },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlYmMyY2JiLWI4NTEtNDA5NC1hZWY1LWQ0OTQ2N2UwYzZhMyIsImlhdCI6MTc3ODQ4NDk4NiwiZXhwIjoxNzc4NTcxMzg2fQ.oIXF9iPQsM4uYikpWaqVaquo6QddsjBgkK66yQX-8hI"
+  }
+}
+
+# Transfer to new user
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s -X POST https://ayomidekay-lendsqr-be-test.up.r
+ailway.app/api/v1/wallets/transfer   -H "Authorization: B
+earer $TOKEN"   -H "Content-Type: application/json"   -d
+'{
+    "receiver_id": "debc2cbb-b851-4094-aef5-d49467e0c6a3"
+,
+    "amount": 15000
+  }' | jq
+{
+  "status": "success",
+  "message": "Transfer successful",
+  "data": {
+    "id": "66b4355e-b339-449e-bb72-4d600b37677b",
+    "user_id": "66a8c6dd-73e5-4ca1-bf42-e2882c00e527",
+    "balance": 33500,
+    "created_at": "2026-05-11T07:06:05.000Z",
+    "updated_at": "2026-05-11T07:38:52.000Z"
+  }
+}
+
+# Change TOKEN and verify funds received
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRlYmMyY2JiLWI4NTEtNDA5NC1hZWY1LWQ0OTQ2N2UwYzZhMyIsImlhdCI6MTc3ODQ4NDk4NiwiZXhwIjoxNzc4NTcxMzg2fQ.oIXF9iPQsM4uYikpWaqVaquo6QddsjBgkK66yQX-8hI"
+
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯ curl -s https://ayomidekay-lendsqr-be-test.up.railway.app/api/v1/wallets/me -H "Authorization: Bearer $TOKEN" | jq
+{
+  "status": "success",
+  "message": "Wallet retrieved successfully",
+  "data": {
+    "id": "67be3f2d-93f4-4d93-b96a-cb12cb885dfb",
+    "user_id": "debc2cbb-b851-4094-aef5-d49467e0c6a3",
+    "balance": 15000,
+    "created_at": "2026-05-11T07:36:27.000Z",
+    "updated_at": "2026-05-11T07:38:52.000Z"
+  }
+}
+
+~/sandbox/demo-credit on  main !  via  v20.20.0 is 󰏗 v1.0.0
+❯
+```
