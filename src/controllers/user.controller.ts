@@ -37,6 +37,19 @@ export class UserController {
     }
   };
 
+  getMe = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const user = await this.userService.findById(req.user!.id);
+      res.json(successResponse('User retrieved successfully', user));
+    } catch (err: unknown) {
+      if (err instanceof AppError) {
+        res.status(err.status).json(errorResponse(err.message));
+        return;
+      }
+      res.status(500).json(errorResponse('An unexpected error occurred'));
+    }
+  };
+
   getById = async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = String(req.params.id);
