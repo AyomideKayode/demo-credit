@@ -1,12 +1,15 @@
 // src/app.ts
+
 import express from 'express';
 import { env } from './config/env';
 import db from './config/database';
 import router from './routes';
+import { setupSwagger } from './config/swagger';
 
 const app = express();
 
 app.use(express.json());
+setupSwagger(app);
 
 app.get('/health', async (_req, res) => {
   try {
