@@ -32,8 +32,8 @@ Follow these steps to exercise the full API from this page:
   },
   servers: [
     {
-      url: 'https://demo-credit-nm84.onrender.com',
-      description: 'Production (Render + Aiven MySQL)',
+      url: 'https://ayomidekay-lendsqr-be-test.up.railway.app',
+      description: 'Production (Railway)',
     },
     {
       url: 'http://localhost:3000',
